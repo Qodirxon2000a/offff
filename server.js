@@ -2,7 +2,6 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const printer = require('pdf-to-printer');
 const cors = require('cors');
-const fs = require('fs');
 const PDFDocument = require('pdfkit'); // PDF fayl yaratish uchun
 
 const app = express();
@@ -31,14 +30,27 @@ app.post('/print', async (req, res) => {
   }
 
   try {
-    const pdfFile = 'receipt.pdf';
+    // Buffer orqali PDF yaratish
     const doc = new PDFDocument({
       size: [226.77, 841.89], // 80mm kenglik va uzun qog'oz formati (1mm = 2.83465pt)
       margins: { top: 10, bottom: 10, left: 10, right: 10 },
     });
 
-    const writeStream = fs.createWriteStream(pdfFile);
-    doc.pipe(writeStream);
+    let buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', async () => {
+      try {
+        const pdfData = Buffer.concat(buffers);
+
+        // PDF faylni printerga yuborish
+        await printer.print(pdfData, { printer: selectedPrinter });
+
+        res.json({ message: 'Chek muvaffaqiyatli chiqarildi!' });
+      } catch (error) {
+        console.error('Chop etishda xatolik:', error);
+        res.status(500).json({ error: 'Chop etishda xatolik yuz berdi' });
+      }
+    });
 
     // Chek matnini PDF formatga yozish
     doc.fontSize(12).font('Helvetica-Bold').text(`Sana: ${content.dateTime}`);
@@ -60,18 +72,6 @@ app.post('/print', async (req, res) => {
     });
 
     doc.end();
-
-    writeStream.on('finish', async () => {
-      try {
-        // PDF faylni printerga yuborish
-        await printer.print(pdfFile, { printer: selectedPrinter });
-        fs.unlinkSync(pdfFile); // PDF faylni o‘chirish
-        res.json({ message: 'Chek muvaffaqiyatli chiqarildi!' });
-      } catch (error) {
-        console.error('Chop etishda xatolik:', error);
-        res.status(500).json({ error: 'Chop etishda xatolik yuz berdi' });
-      }
-    });
   } catch (error) {
     console.error('PDF yaratishda xatolik:', error);
     res.status(500).json({ error: 'PDF yaratishda xatolik yuz berdi' });
